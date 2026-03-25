@@ -47,19 +47,18 @@ EOF
 cat > gradlew << 'EOF'
 #!/usr/bin/env sh
 APP_HOME="$(cd "$(dirname "$0")"; pwd)"
-exec java -classpath "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" \
-  org.gradle.wrapper.GradleWrapperMain "$@"
+exec java -classpath "$APP_HOME/gradle/wrapper/gradle-wrapper.jar"   org.gradle.wrapper.GradleWrapperMain "$@"
 EOF
 chmod +x gradlew
 
 cat > app/build.gradle << 'EOF'
 plugins { id 'com.android.application' }
 android {
-    compileSdk 33
+    compileSdk 34
     defaultConfig {
         applicationId "com.dg.scanner"
         minSdk 21
-        targetSdk 29
+        targetSdk 34
         versionCode 1
         versionName "1.0"
     }
@@ -91,7 +90,10 @@ cat > app/src/main/AndroidManifest.xml << 'EOF'
     package="com.dg.scanner">
 
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -100,7 +102,6 @@ cat > app/src/main/AndroidManifest.xml << 'EOF'
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.DGScanner">
 
         <activity
@@ -122,7 +123,9 @@ cat > app/src/main/AndroidManifest.xml << 'EOF'
 </manifest>
 EOF
 
-cat > app/src/main/java/com/dg/scanner/MainActivity.java << 'EOF'
+JAVA_DIR="app/src/main/java/com/dg/scanner"
+
+cat > "$JAVA_DIR/MainActivity.java" << 'EOF'
 package com.dg.scanner;
 
 import android.Manifest;
@@ -139,11 +142,8 @@ import de.markusfisch.android.barcodescannerview.widget.BarcodeScannerView;
 
 public class MainActivity extends Activity {
 
-    // Wenn dieser QR-Code gescannt wird...
     private static final String TRIGGER_URL = "https://spielehrei.org/q-intro/";
-    // ...wird stattdessen diese lokale Datei geöffnet
     private static final String LOCAL_URL = "file:///storage/emulated/0/Download/dg-quiz.html";
-
     private static final int REQUEST_CAMERA = 1;
     private BarcodeScannerView scannerView;
     private volatile boolean launched = false;
@@ -169,23 +169,18 @@ public class MainActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_main);
-
         scannerView = findViewById(R.id.scanner);
         scannerView.setCropRatio(.75f);
-
         scannerView.setOnBarcodeListener(result -> {
             if (!launched) {
                 launched = true;
                 final String scanned = result.getText().trim();
-                // URL umleiten: egal was gescannt wird, immer lokale Datei öffnen
                 final String urlToOpen = scanned.equals(TRIGGER_URL)
-                        ? LOCAL_URL
-                        : scanned; // andere QR-Codes werden normal geöffnet
+                        ? LOCAL_URL : scanned;
                 runOnUiThread(() -> openUrl(urlToOpen));
             }
             return false;
         });
-
         checkPermissions();
     }
 
@@ -216,38 +211,43 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(Manifest.permission.CAMERA)
                     != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(
-                        new String[]{Manifest.permission.CAMERA},
-                        REQUEST_CAMERA);
+                requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA);
             }
         }
     }
 }
 EOF
 
-cat > app/src/main/java/com/dg/scanner/WebViewActivity.java << 'EOF'
+cat > "$JAVA_DIR/WebViewActivity.java" << 'EOF'
 package com.dg.scanner;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
 public class WebViewActivity extends Activity {
 
     public static final String EXTRA_URL = "url";
-    private static final int REQUEST_STORAGE = 2;
     private WebView webView;
     private String pendingUrl;
 
@@ -255,8 +255,6 @@ public class WebViewActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Vollbild
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
@@ -264,11 +262,8 @@ public class WebViewActivity extends Activity {
             | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
-
         setContentView(R.layout.activity_webview);
-
         webView = findViewById(R.id.web_view);
-
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setAllowFileAccess(true);
@@ -276,68 +271,93 @@ public class WebViewActivity extends Activity {
         s.setAllowUniversalAccessFromFileURLs(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onReceivedError(WebView view, WebResourceRequest request,
-                    WebResourceError error) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    runOnUiThread(() ->
-                        new AlertDialog.Builder(WebViewActivity.this)
-                            .setTitle("Fehler beim Laden")
-                            .setMessage("Datei nicht gefunden:\n" + pendingUrl
-                                + "\n\nFehler: " + error.getDescription())
-                            .setPositiveButton("OK", (d, w) -> finish())
-                            .show()
-                    );
-                }
-            }
-        });
-
+        webView.setWebViewClient(new WebViewClient());
         pendingUrl = getIntent().getStringExtra(EXTRA_URL);
-
         if (pendingUrl == null || pendingUrl.isEmpty()) {
-            showError("Keine URL empfangen.");
-            return;
+            showError("Keine URL empfangen."); return;
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
-                checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(
-                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                    REQUEST_STORAGE);
+        if (pendingUrl.startsWith("file://")) {
+            ensureStoragePermission();
         } else {
-            loadUrl();
+            webView.loadUrl(pendingUrl);
+        }
+    }
+
+    private void ensureStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                new AlertDialog.Builder(this)
+                    .setTitle("Speicherzugriff erforderlich")
+                    .setMessage("Bitte erlaube den Zugriff auf alle Dateien.")
+                    .setPositiveButton("Einstellungen", (d, w) -> {
+                        Intent i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:" + getPackageName()));
+                        startActivityForResult(i, 100);
+                    })
+                    .setCancelable(false).show();
+            } else {
+                loadFileDirectly();
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 1);
+            } else {
+                loadFileDirectly();
+            }
+        } else {
+            loadFileDirectly();
         }
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode,
-            String[] permissions, int[] grantResults) {
-        loadUrl();
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == 100) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                    Environment.isExternalStorageManager()) {
+                loadFileDirectly();
+            } else {
+                showError("Ohne Dateizugriff kann die Datei nicht geladen werden.");
+            }
+        }
     }
 
-    private void loadUrl() {
-        webView.loadUrl(pendingUrl);
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] results) {
+        loadFileDirectly();
+    }
+
+    private void loadFileDirectly() {
+        String path = pendingUrl.replace("file://", "");
+        File file = new File(path);
+        if (!file.exists()) {
+            showError("Datei nicht gefunden:\n" + path); return;
+        }
+        try {
+            StringBuilder sb = new StringBuilder();
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) sb.append(line).append("\n");
+            reader.close();
+            String baseUrl = "file://" + file.getParent() + "/";
+            webView.loadDataWithBaseURL(baseUrl, sb.toString(), "text/html", "UTF-8", null);
+        } catch (Exception e) {
+            showError("Fehler: " + e.getMessage());
+        }
     }
 
     private void showError(String msg) {
         new AlertDialog.Builder(this)
-            .setTitle("Fehler")
-            .setMessage(msg)
-            .setPositiveButton("OK", (d, w) -> finish())
-            .show();
+            .setTitle("Fehler").setMessage(msg)
+            .setPositiveButton("OK", (d, w) -> finish()).show();
     }
 
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
+        if (webView != null && webView.canGoBack()) webView.goBack();
+        else super.onBackPressed();
     }
 }
 EOF
@@ -348,12 +368,10 @@ cat > app/src/main/res/layout/activity_main.xml << 'EOF'
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-
     <de.markusfisch.android.barcodescannerview.widget.BarcodeScannerView
         android:id="@+id/scanner"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
-
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -364,7 +382,6 @@ cat > app/src/main/res/layout/activity_main.xml << 'EOF'
         android:textSize="16sp"
         android:background="#88000000"
         android:padding="12dp" />
-
 </FrameLayout>
 EOF
 
@@ -373,8 +390,7 @@ cat > app/src/main/res/layout/activity_webview.xml << 'EOF'
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
-    <WebView
-        android:id="@+id/web_view"
+    <WebView android:id="@+id/web_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 </FrameLayout>
@@ -419,4 +435,4 @@ LAUNCHER_XML='<?xml version="1.0" encoding="utf-8"?>
 echo "$LAUNCHER_XML" > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 echo "$LAUNCHER_XML" > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 
-echo "=== Fertig ==="
+echo "=== Fertig: DG Scanner ==="
