@@ -84,8 +84,6 @@ cat > app/src/main/AndroidManifest.xml << 'EOF'
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -196,24 +194,13 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.Settings;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 
 public class WebViewActivity extends Activity {
     public static final String EXTRA_URL = "url";
@@ -243,73 +230,12 @@ public class WebViewActivity extends Activity {
         if (pendingUrl == null || pendingUrl.isEmpty()) {
             showError("Keine URL empfangen."); return;
         }
-        if (pendingUrl.startsWith("file://")) {
-            ensureStoragePermission();
-        } else {
-            webView.loadUrl(pendingUrl);
-        }
-    }
-
-    private void ensureStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                new AlertDialog.Builder(this)
-                    .setTitle("Speicherzugriff erforderlich")
-                    .setMessage("Bitte erlaube den Zugriff auf alle Dateien in den Einstellungen.")
-                    .setPositiveButton("Einstellungen", (d, w) -> startActivityForResult(
-                        new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                            Uri.parse("package:" + getPackageName())), 100))
-                    .setCancelable(false).show();
-            } else {
-                loadFileDirectly();
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 1);
-            } else {
-                loadFileDirectly();
-            }
-        } else {
-            loadFileDirectly();
-        }
-    }
-
-    @Override
-    protected void onActivityResult(int req, int res, Intent data) {
-        super.onActivityResult(req, res, data);
-        if (req == 100) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-                loadFileDirectly();
-            } else {
-                showError("Ohne Dateizugriff kann die Datei nicht geladen werden.");
-            }
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int req, String[] perms, int[] results) {
-        loadFileDirectly();
+        webView.loadUrl(pendingUrl);
     }
 
     private void loadFileDirectly() {
-        String path = pendingUrl.replace("file://", "");
-        File file = new File(path);
-        if (!file.exists()) {
-            showError("Datei nicht gefunden:\n" + path); return;
-        }
-        try {
-            StringBuilder sb = new StringBuilder();
-            BufferedReader reader = new BufferedReader(
-                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8));
-            String line;
-            while ((line = reader.readLine()) != null) sb.append(line).append("\n");
-            reader.close();
-            webView.loadDataWithBaseURL("file://" + file.getParent() + "/",
-                sb.toString(), "text/html", "UTF-8", null);
-        } catch (Exception e) {
-            showError("Fehler: " + e.getMessage());
-        }
+        // WebView laedt file:// direkt - zuverlaessiger als manuelles Einlesen
+        webView.loadUrl(pendingUrl);
     }
 
     private void showError(String msg) {
