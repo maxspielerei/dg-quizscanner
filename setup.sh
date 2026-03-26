@@ -16,6 +16,7 @@ allprojects {
 task clean(type: Delete) { delete rootProject.buildDir }
 EOF
 
+
 cat > settings.gradle << 'EOF'
 rootProject.name = "DGScanner"
 include ':app'
@@ -41,6 +42,7 @@ cat > gradlew << 'EOF'
 APP_HOME="$(cd "$(dirname "$0")"; pwd)"
 exec java -classpath "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" org.gradle.wrapper.GradleWrapperMain "$@"
 EOF
+
 chmod +x gradlew
 
 cat > app/build.gradle << 'EOF'
@@ -70,9 +72,11 @@ dependencies {
 }
 EOF
 
+
 cat > app/proguard-rules.pro << 'EOF'
 -keep class de.markusfisch.android.barcodescannerview.** { *; }
 EOF
+
 
 # Fix: xmlns:tools im manifest-Tag, damit tools:ignore funktioniert
 cat > app/src/main/AndroidManifest.xml << 'EOF'
@@ -186,6 +190,7 @@ public class MainActivity extends Activity {
     }
 }
 EOF
+
 
 cat > app/src/main/java/com/dg/scanner/WebViewActivity.java << 'EOF'
 package com.dg.scanner;
@@ -305,7 +310,9 @@ public class WebViewActivity extends Activity {
         else super.onBackPressed();
     }
 }
-EOFcat > app/src/main/res/layout/activity_main.xml << 'EOF'
+EOF
+
+cat > app/src/main/res/layout/activity_main.xml << 'EOF'
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent"
