@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 set -e
 echo "=== Erstelle DG Scanner ==="
 mkdir -p app/src/main/java/com/dg/scanner
