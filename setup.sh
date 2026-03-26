@@ -1,8 +1,13 @@
-#!/bin/bash 
+#!/bin/bash
 set -e
 echo "=== Erstelle DG Scanner ==="
+
+mkdir -p app/src/main/assets
 mkdir -p app/src/main/java/com/dg/scanner
-mkdir -p app/src/main/res/{layout,values,drawable,mipmap-anydpi-v26}
+mkdir -p app/src/main/res/layout
+mkdir -p app/src/main/res/values
+mkdir -p app/src/main/res/drawable
+mkdir -p app/src/main/res/mipmap-anydpi-v26
 mkdir -p gradle/wrapper
 
 cat > build.gradle << 'EOF'
@@ -11,11 +16,14 @@ buildscript {
     dependencies { classpath 'com.android.tools.build:gradle:7.4.2' }
 }
 allprojects {
-    repositories { google(); mavenCentral(); maven { url 'https://jitpack.io' } }
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
 }
 task clean(type: Delete) { delete rootProject.buildDir }
 EOF
-
 
 cat > settings.gradle << 'EOF'
 rootProject.name = "DGScanner"
@@ -42,7 +50,6 @@ cat > gradlew << 'EOF'
 APP_HOME="$(cd "$(dirname "$0")"; pwd)"
 exec java -classpath "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" org.gradle.wrapper.GradleWrapperMain "$@"
 EOF
-
 chmod +x gradlew
 
 cat > app/build.gradle << 'EOF'
@@ -72,13 +79,10 @@ dependencies {
 }
 EOF
 
-
 cat > app/proguard-rules.pro << 'EOF'
 -keep class de.markusfisch.android.barcodescannerview.** { *; }
 EOF
 
-
-# Fix: xmlns:tools im manifest-Tag, damit tools:ignore funktioniert
 cat > app/src/main/AndroidManifest.xml << 'EOF'
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -86,8 +90,6 @@ cat > app/src/main/AndroidManifest.xml << 'EOF'
     package="com.dg.scanner">
 
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -113,6 +115,261 @@ cat > app/src/main/AndroidManifest.xml << 'EOF'
 </manifest>
 EOF
 
+# HTML direkt als Asset einbetten - kein Dateizugriff nötig
+cat > app/src/main/assets/dg-quiz.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DG Quiz</title>
+    <style>
+        @keyframes bgShift {
+            0%   { background-color: #0a3d3d; }
+            50%  { background-color: #0d6060; }
+            100% { background-color: #0a3d3d; }
+        }
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #0a3d3d;
+            animation: bgShift 3s ease-in-out infinite;
+        }
+        .card {
+            text-align: center;
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            width: 85%;
+            max-width: 450px;
+        }
+        button {
+            padding: 20px 40px;
+            font-size: 1.3rem;
+            font-weight: bold;
+            cursor: pointer;
+            background-color: #e67e22;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            width: 100%;
+        }
+        button:active {
+            transform: scale(0.98);
+            background-color: #d35400;
+        }
+        .hidden { display: none; }
+        .fade-in { animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        h2 { color: #2c3e50; line-height: 1.5; }
+        .back-link {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.5);
+            background-color: rgba(255,255,255,0.1);
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .back-link:hover {
+            color: rgba(255,255,255,0.8);
+            background-color: rgba(255,255,255,0.15);
+        }
+        .pw-label {
+            display: block;
+            color: #2c3e50;
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+        }
+        #pw-input {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 1.1rem;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            box-sizing: border-box;
+            margin-bottom: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+            text-align: center;
+            color: #2c3e50;
+        }
+        #pw-input:focus { border-color: #e67e22; }
+        #pw-error {
+            display: none;
+            color: #c0392b;
+            font-weight: bold;
+            font-size: 1rem;
+            background: #fde8e8;
+            border: 2px solid #e74c3c;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 14px;
+        }
+        #start-screen h2 {
+            font-size: 1rem;
+            text-align: center;
+            line-height: 1.8;
+        }
+        .start-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #e67e22;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="#" id="back-link" class="back-link hidden" onclick="previousQuestion(); return false;">&#8592; zur&uuml;ck</a>
+
+    <div class="card">
+
+        <!-- PASSWORT -->
+        <div id="password-screen">
+            <h2 style="margin-top:0; text-align:center;">&#128274;</h2>
+            <label class="pw-label">Gib das Passwort <strong>in Kleinbuchstaben</strong> ein.</label>
+            <input type="text" id="pw-input" placeholder="Passwort"
+                autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" />
+            <div id="pw-error">Das war falsch!<br>Sucht in euren Kitteln nach Hinweisen.</div>
+            <button onclick="checkPassword()">Weiter</button>
+        </div>
+
+        <!-- START -->
+        <div id="start-screen" class="hidden">
+            <div class="start-title">Super gemacht!</div>
+            <h2>
+                Nun braucht ihr noch 2 Sachen:<br><br>
+                <strong>DEN R&Ouml;HREN-APPARAT</strong><br>
+                Der ist im gr&uuml;nen Schrank. Habt ihr ihn schon ge&ouml;ffnet?<br><br>
+                Au&szlig;erdem ben&ouml;tigt ihr die <strong>KUGELN</strong> in der roten Box.<br>
+                &Ouml;ffnet den Kabelbinder mit einer Zange!<br>
+                Und wo ist die Zange?<br>
+                Untersucht nochmal genau den silbernen Koffer&nbsp;&hellip;<br><br>
+                OK&nbsp;&hellip; bereit?<br><br>
+                Los geht&rsquo;s mit den Fragen:
+            </h2>
+            <br>
+            <button onclick="showQuestion()">Erste Frage</button>
+        </div>
+
+        <!-- FRAGEN -->
+        <div id="question-screen" class="hidden">
+            <h2 id="frage"></h2>
+            <br>
+            <button id="next-btn" onclick="nextQuestion()">N&auml;chste Frage</button>
+        </div>
+
+        <!-- ENDE -->
+        <div id="end-screen" class="hidden">
+            <h1 style="color:#27ae60; font-size:3rem; margin:0;">&#127881;</h1>
+            <h2 style="color:#27ae60;">Geschafft!</h2>
+        </div>
+
+    </div>
+
+    <script>
+        var validPasswords = [
+            'aquano','aquanoo','aquanooo','aquanoooo','aquanooooo',
+            'aquanoooooo','aquanooooooo','aquanoooooooo','aquanooooooooo','aquanoooooooooo'
+        ];
+
+        function checkPassword() {
+            var val = document.getElementById('pw-input').value.trim();
+            var err = document.getElementById('pw-error');
+            if (validPasswords.indexOf(val) !== -1) {
+                err.style.display = 'none';
+                document.getElementById('password-screen').style.display = 'none';
+                document.getElementById('start-screen').style.display = 'block';
+            } else {
+                err.style.display = 'block';
+            }
+        }
+
+        document.getElementById('pw-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') checkPassword();
+        });
+
+        var fragen = [
+            "Wenn <em>AquaMegaWorld</em> ein Erlebnisbad f&uuml;r alle Berliner ist, d&uuml;rfen daf&uuml;r ein paar Wohnh&auml;user gesprengt werden?",
+            "Die Politiker haben den Bau von <em>AquaMegaWorld</em> beschlossen. Was meinst Du: h&auml;tten alle Berliner &uuml;ber den Bau von <em>AquaMegaWorld</em> abstimmen sollen?",
+            "Sollten gefl&uuml;chtete, behinderte, erkrankte und arme Menschen <em>AquaMegaWorld</em> kostenlos besuchen d&uuml;rfen, wenn der Eintritt f&uuml;r alle Anderen dadurch teurer wird?",
+            "Darf der Eintritt in <em>AquaMegaWorld</em> f&uuml;r Kinder h&ouml;her als 10&nbsp;&euro; sein?",
+            "Menschen mit viel Geld bekommen in <em>AquaMegaWorld</em> einen eigenen Bereich gebaut, andere Menschen d&uuml;rfen da nicht rein. Ist das ok?",
+            "Das Finale von &bdquo;The Voice of Germany&ldquo; wird in ganz Deutschland gezeigt und soll in <em>AquaMegaWorld</em> stattfinden.<br>Daf&uuml;r ist <em>AquaMegaWorld</em> f&uuml;r alle Berliner 2 Tage lang gesperrt.<br>Findest du das in Ordnung?",
+            "Sollten alle Berliner zuhause Wasser sparen, wenn das Wasser im Sommer knapp wird, damit <em>AquaMegaWorld</em> weiter offen bleiben kann?",
+            "Darf der Gesch&auml;ftsf&uuml;hrer von <em>AquaMegaWorld</em> alleine die Bauplanung &auml;ndern?",
+            "Alle Berliner bezahlen die <em>AquaMegaWorld</em>-Firma f&uuml;r den aufwendigen Bau, der nun immer teurer wird. Ist das ok f&uuml;r dich?",
+            "Darf die <em>AquaMegaWorld</em>-Firma das Mitbringen von Essen verbieten, weil sie eigene Snacks verkaufen will?",
+            "Eigentlich war eine Bahn-Station neben <em>AquaMegaWorld</em> geplant. Weil das zu teuer wird, soll laut Baufirma ein eigener Bus f&uuml;r 50 Cent dorthin fahren. Ok f&uuml;r dich?",
+            "Sollen alle Berliner f&uuml;r den Bau von <em>AquaMegaWorld</em> zus&auml;tzlich Steuern zahlen?",
+            "Wenn <em>AquaMegaWorld</em> Pleite geht: soll Berlin (und alle Berliner) dann die Schulden zahlen?",
+            "In <em>AquaMegaWorld</em> wird dein Handyempfang nicht funktionieren.<br>Du kannst nur in das WLAN von dort. (1&nbsp;&euro; pro Stunde)<br>Ok f&uuml;r dich?",
+            "Wenn <em>AquaMegaWorld</em> schon fast voll ist und nur noch wenige Menschen rein d&uuml;rfen:<br>sollten dann Menschen, die in Berlin wohnen, bevorzugt werden?"
+        ];
+
+        var aktuelleFrageIndex = 0;
+
+        function showQuestion() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('question-screen').style.display = 'block';
+            document.getElementById('back-link').classList.remove('hidden');
+            aktuelleFrageIndex = 0;
+            updateQuestion();
+        }
+
+        function updateQuestion() {
+            document.getElementById('frage').innerHTML = fragen[aktuelleFrageIndex];
+            document.getElementById('next-btn').textContent =
+                aktuelleFrageIndex === fragen.length - 1 ? 'Abschlie\\u00dfen' : 'N\\u00e4chste Frage';
+        }
+
+        function nextQuestion() {
+            var qScreen = document.getElementById('question-screen');
+            if (aktuelleFrageIndex === fragen.length - 1) {
+                qScreen.style.display = 'none';
+                document.getElementById('back-link').classList.add('hidden');
+                document.getElementById('end-screen').style.display = 'block';
+                return;
+            }
+            qScreen.classList.remove('fade-in');
+            void qScreen.offsetWidth;
+            qScreen.classList.add('fade-in');
+            aktuelleFrageIndex++;
+            updateQuestion();
+        }
+
+        function previousQuestion() {
+            var qScreen = document.getElementById('question-screen');
+            if (aktuelleFrageIndex === 0) {
+                qScreen.style.display = 'none';
+                document.getElementById('back-link').classList.add('hidden');
+                document.getElementById('start-screen').style.display = 'block';
+            } else {
+                qScreen.classList.remove('fade-in');
+                void qScreen.offsetWidth;
+                qScreen.classList.add('fade-in');
+                aktuelleFrageIndex--;
+                updateQuestion();
+            }
+        }
+    </script>
+
+</body>
+</html>
+
+HTMLEOF
+
 cat > app/src/main/java/com/dg/scanner/MainActivity.java << 'EOF'
 package com.dg.scanner;
 
@@ -128,8 +385,8 @@ import android.widget.Toast;
 import de.markusfisch.android.barcodescannerview.widget.BarcodeScannerView;
 
 public class MainActivity extends Activity {
+    // Diese URL im QR-Code wird abgefangen
     private static final String TRIGGER_URL = "https://spielehrei.org/q-intro/";
-    private static final String LOCAL_URL = "file:///storage/emulated/0/Download/dg-quiz.html";
     private static final int REQUEST_CAMERA = 1;
     private BarcodeScannerView scannerView;
     private volatile boolean launched = false;
@@ -158,10 +415,12 @@ public class MainActivity extends Activity {
             if (!launched) {
                 launched = true;
                 final String scanned = result.getText().trim();
-                final String urlToOpen = scanned.equals(TRIGGER_URL) ? LOCAL_URL : scanned;
+                // Trigger-URL -> Asset laden; alles andere normal öffnen
+                final boolean isAsset = scanned.equals(TRIGGER_URL);
                 runOnUiThread(() -> {
                     Intent intent = new Intent(MainActivity.this, WebViewActivity.class);
-                    intent.putExtra(WebViewActivity.EXTRA_URL, urlToOpen);
+                    intent.putExtra(WebViewActivity.EXTRA_IS_ASSET, isAsset);
+                    intent.putExtra(WebViewActivity.EXTRA_URL, scanned);
                     startActivity(intent);
                 });
             }
@@ -191,35 +450,23 @@ public class MainActivity extends Activity {
 }
 EOF
 
-
 cat > app/src/main/java/com/dg/scanner/WebViewActivity.java << 'EOF'
 package com.dg.scanner;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.ContentResolver;
-import android.content.ContentUris;
-import android.database.Cursor;
-import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.MediaStore;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 
 public class WebViewActivity extends Activity {
     public static final String EXTRA_URL = "url";
+    public static final String EXTRA_IS_ASSET = "is_asset";
     private WebView webView;
-    private String pendingUrl;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -234,74 +481,21 @@ public class WebViewActivity extends Activity {
         webView = findViewById(R.id.web_view);
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
-        s.setAllowFileAccess(true);
-        s.setAllowFileAccessFromFileURLs(true);
-        s.setAllowUniversalAccessFromFileURLs(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         webView.setWebViewClient(new WebViewClient());
-        pendingUrl = getIntent().getStringExtra(EXTRA_URL);
-        if (pendingUrl == null || pendingUrl.isEmpty()) {
-            showError("Keine URL empfangen."); return;
-        }
-        if (pendingUrl.startsWith("file://")) {
-            loadViaMediaStore(Uri.parse(pendingUrl).getPath());
+
+        boolean isAsset = getIntent().getBooleanExtra(EXTRA_IS_ASSET, false);
+        String url = getIntent().getStringExtra(EXTRA_URL);
+
+        if (isAsset) {
+            // Direkt aus APK laden - keine Permission nötig!
+            webView.loadUrl("file:///android_asset/dg-quiz.html");
+        } else if (url != null && !url.isEmpty()) {
+            webView.loadUrl(url);
         } else {
-            webView.loadUrl(pendingUrl);
+            finish();
         }
-    }
-
-    private void loadViaMediaStore(String fullPath) {
-        // Dateiname aus Pfad extrahieren
-        String fileName = fullPath.substring(fullPath.lastIndexOf("/") + 1);
-        try {
-            // Suche Datei im Download-Ordner via MediaStore
-            Uri downloadsUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-            String[] projection = {MediaStore.Downloads._ID, MediaStore.Downloads.DISPLAY_NAME};
-            String selection = MediaStore.Downloads.DISPLAY_NAME + " = ?";
-            String[] selectionArgs = {fileName};
-            ContentResolver resolver = getContentResolver();
-            Cursor cursor = resolver.query(downloadsUri, projection, selection, selectionArgs, null);
-            if (cursor != null && cursor.moveToFirst()) {
-                long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID));
-                Uri fileUri = ContentUris.withAppendedId(downloadsUri, id);
-                cursor.close();
-                // Datei lesen und in WebView laden
-                loadFromUri(fileUri, fullPath);
-            } else {
-                if (cursor != null) cursor.close();
-                // Fallback: direkt versuchen
-                loadFromUri(Uri.fromFile(new java.io.File(fullPath)), fullPath);
-            }
-        } catch (Exception e) {
-            showError("Fehler: " + e.getMessage() + "\nPfad: " + fullPath);
-        }
-    }
-
-    private void loadFromUri(Uri uri, String originalPath) {
-        try {
-            InputStream is = getContentResolver().openInputStream(uri);
-            if (is == null) {
-                showError("Datei konnte nicht geöffnet werden:\n" + originalPath);
-                return;
-            }
-            StringBuilder sb = new StringBuilder();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-            String line;
-            while ((line = reader.readLine()) != null) sb.append(line).append("\n");
-            reader.close();
-            // BaseURL fuer relative Pfade
-            String parent = originalPath.substring(0, originalPath.lastIndexOf("/") + 1);
-            webView.loadDataWithBaseURL("file://" + parent, sb.toString(), "text/html", "UTF-8", null);
-        } catch (Exception e) {
-            showError("Lesefehler:\n" + e.getMessage());
-        }
-    }
-
-    private void showError(String msg) {
-        new AlertDialog.Builder(this)
-            .setTitle("Fehler").setMessage(msg)
-            .setPositiveButton("OK", (d, w) -> finish()).show();
     }
 
     @Override
@@ -350,7 +544,7 @@ EOF
 
 cat > app/src/main/res/values/colors.xml << 'EOF'
 <?xml version="1.0" encoding="utf-8"?>
-<resources><color name="ic_launcher_background">#1a1a2e</color></resources>
+<resources><color name="ic_launcher_background">#0a3d3d</color></resources>
 EOF
 
 cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'EOF'
@@ -358,7 +552,7 @@ cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'EOF'
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#f5a623"
+    <path android:fillColor="#e67e22"
         android:pathData="M3,3h7v7H3V3zM4.5,4.5v4h4v-4H4.5zM14,3h7v7h-7V3zM15.5,4.5v4h4v-4H15.5zM3,14h7v7H3V14zM4.5,15.5v4h4v-4H4.5zM14,14h2v2h-2v-2zM18,14h3v3h-3v-3zM16,18h2v3h-2v-3zM19,18h2v2h-2v-2zM6,6h2v2H6V6zM17,6h2v2h-2V6zM6,17h2v2H6V17z"/>
 </vector>
 EOF
